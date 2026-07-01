@@ -27,3 +27,4 @@ if [ "$is_serve" -eq 1 ]; then
 fi
 
 exec scorpio --config-path /etc/scorpiofs/scorpio.toml "$@"
+
