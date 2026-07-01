@@ -87,9 +87,10 @@ pub async fn mount_filesystem_with_antares_cache<
 ) -> std::io::Result<MountHandle> {
     use std::io::{Error, ErrorKind};
 
-    // Logging is initialized once by the binary entry point (tracing). This
-    // library function no longer installs its own logger; `log::` records are
-    // bridged into the global tracing subscriber.
+    // This library function does not install a logger. The scorpio/antares
+    // binaries call `util::logging::init` once at startup, which installs the
+    // tracing subscriber and the `log` -> `tracing` bridge; a library consumer
+    // that wants `log::` records captured must initialize tracing itself.
     //let logfs = LoggingFileSystem::new(fs);
 
     let mount_path: OsString = OsString::from(mountpoint);

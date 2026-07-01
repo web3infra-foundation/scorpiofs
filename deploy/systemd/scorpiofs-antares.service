@@ -19,7 +19,12 @@ SupplementaryGroups=fuse
 AmbientCapabilities=CAP_SYS_ADMIN
 
 # The leading '+' runs this step as root so it can create and chown the dirs.
+# Parent data dirs are listed first so `install -d` chowns them too (it does not
+# chown intermediate components it auto-creates), so the scorpiofs user can write
+# config.toml/state.toml under /var/lib/scorpiofs.
 ExecStartPre=+/usr/bin/install -d -o scorpiofs -g scorpiofs \
+    /var/lib/scorpiofs \
+    /var/lib/scorpiofs/antares \
     /var/lib/scorpiofs/antares/upper \
     /var/lib/scorpiofs/antares/cl \
     /var/lib/scorpiofs/antares/mnt

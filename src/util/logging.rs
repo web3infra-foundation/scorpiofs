@@ -1,10 +1,13 @@
 //! Centralized logging/tracing initialization for the Scorpio binaries.
 //!
-//! All runtime diagnostics go through `tracing`. Because the global subscriber
-//! installed here also captures records emitted via the `log` crate (the
-//! `tracing-log` bridge is enabled by `try_init`), there is a single,
-//! consistent log stream regardless of whether a given module uses `tracing::`
-//! or `log::` macros.
+//! All runtime diagnostics go through `tracing`. The subscriber is installed
+//! with `SubscriberInitExt::try_init`, which — because the `tracing-log`
+//! feature of `tracing-subscriber` is enabled (see `Cargo.toml`) — also
+//! installs a `tracing_log::LogTracer`. That captures records emitted via the
+//! `log` crate as `tracing` events, giving one consistent log stream whether a
+//! module uses `tracing::` or `log::` macros. (The bridge exists only after
+//! this init runs, so it applies to the binaries, not to library consumers that
+//! never initialize tracing.)
 
 use tracing_subscriber::EnvFilter;
 

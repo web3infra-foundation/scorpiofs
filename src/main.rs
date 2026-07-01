@@ -159,7 +159,7 @@ async fn main() {
             path,
             cl,
             endpoint,
-        }) => cli::http_mount(job_id.as_deref(), &path, cl.as_deref(), &endpoint),
+        }) => cli::http_mount(job_id.as_deref(), &path, cl.as_deref(), &endpoint).await,
         Some(Commands::Config {
             action: ConfigAction::Show,
         }) => cli::config_show(),
