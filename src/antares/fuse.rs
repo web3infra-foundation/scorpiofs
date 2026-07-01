@@ -89,7 +89,7 @@ impl AntaresFuse {
         // With writeback cache enabled, reopening an existing file in append mode
         // can fail inside libfuse-fs passthrough I/O with EBADF.
         let handle =
-            mount_filesystem_with_antares_cache(logfs, self.mountpoint.as_os_str(), false).await;
+            mount_filesystem_with_antares_cache(logfs, self.mountpoint.as_os_str(), false).await?;
 
         // Spawn background task to run the FUSE session
         let fuse_task = tokio::spawn(async move {
@@ -155,7 +155,7 @@ impl AntaresFuse {
             // If it cannot finish quickly (busy mount), fall back to lazy detach.
             let graceful = tokio::time::timeout(
                 tokio::time::Duration::from_millis(1200),
-                tokio::process::Command::new("fusermount")
+                tokio::process::Command::new(crate::antares::fusermount_bin())
                     .arg("-u")
                     .arg(&mount_path)
                     .output(),
@@ -170,7 +170,7 @@ impl AntaresFuse {
                         mount_path,
                         String::from_utf8_lossy(&output.stderr)
                     );
-                    let lazy = tokio::process::Command::new("fusermount")
+                    let lazy = tokio::process::Command::new(crate::antares::fusermount_bin())
                         .arg("-uz")
                         .arg(&mount_path)
                         .output()
@@ -189,7 +189,7 @@ impl AntaresFuse {
                         mount_path,
                         e
                     );
-                    let lazy = tokio::process::Command::new("fusermount")
+                    let lazy = tokio::process::Command::new(crate::antares::fusermount_bin())
                         .arg("-uz")
                         .arg(&mount_path)
                         .output()
@@ -207,7 +207,7 @@ impl AntaresFuse {
                         "fusermount -u timed out for {}; falling back to -uz",
                         mount_path
                     );
-                    let lazy = tokio::process::Command::new("fusermount")
+                    let lazy = tokio::process::Command::new(crate::antares::fusermount_bin())
                         .arg("-uz")
                         .arg(&mount_path)
                         .output()
@@ -1003,7 +1003,7 @@ mod tests {
         }
 
         // AntaresFuse::unmount uses `fusermount -uz`.
-        if std::process::Command::new("fusermount")
+        if std::process::Command::new(crate::antares::fusermount_bin())
             .arg("--version")
             .output()
             .is_err()
@@ -1242,7 +1242,9 @@ mod tests {
             "Mounting simple passthrough overlay at: {}",
             mount.display()
         );
-        let handle = crate::server::mount_filesystem(overlay, mount.as_os_str()).await;
+        let handle = crate::server::mount_filesystem(overlay, mount.as_os_str())
+            .await
+            .unwrap();
 
         // Spawn background task
         let fuse_task = tokio::spawn(async move {
@@ -1262,7 +1264,7 @@ mod tests {
 
         // Unmount using lazy unmount to avoid blocking
         println!("Unmounting...");
-        let output = tokio::process::Command::new("fusermount")
+        let output = tokio::process::Command::new(crate::antares::fusermount_bin())
             .arg("-uz") // Use lazy unmount
             .arg(&mount)
             .output()
@@ -1872,7 +1874,7 @@ mod tests {
         let base = PathBuf::from("/tmp/antares_deep_overlay_test3");
         // Clean up any existing mount point first
         let mount = base.join("mnt");
-        let _ = tokio::process::Command::new("fusermount")
+        let _ = tokio::process::Command::new(crate::antares::fusermount_bin())
             .arg("-uz")
             .arg(&mount)
             .output()
@@ -1918,7 +1920,9 @@ mod tests {
 
         println!("Mounting deep overlay at: {}", mount.display());
         let logfs = LoggingFileSystem::new(overlay);
-        let handle = crate::server::mount_filesystem(logfs, mount.as_os_str()).await;
+        let handle = crate::server::mount_filesystem(logfs, mount.as_os_str())
+            .await
+            .unwrap();
 
         // Run FUSE session in the background.
         let _fuse_task = tokio::spawn(async move {
@@ -1953,7 +1957,7 @@ mod tests {
         assert!(!lower_file.exists(), "File should NOT exist in lower layer");
 
         // Unmount
-        let _ = tokio::process::Command::new("fusermount")
+        let _ = tokio::process::Command::new(crate::antares::fusermount_bin())
             .arg("-uz")
             .arg(&mount)
             .output()

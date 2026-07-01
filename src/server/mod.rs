@@ -73,7 +73,7 @@ fn apply_antares_cache_mount_options(options: &mut MountOptions) {
 pub async fn mount_filesystem<F: Filesystem + std::marker::Sync + Send + 'static>(
     fs: F,
     mountpoint: &OsStr,
-) -> MountHandle {
+) -> std::io::Result<MountHandle> {
     mount_filesystem_with_antares_cache(fs, mountpoint, false).await
 }
 
@@ -84,32 +84,45 @@ pub async fn mount_filesystem_with_antares_cache<
     fs: F,
     mountpoint: &OsStr,
     enable_antares_cache: bool,
-) -> MountHandle {
-    if let Err(e) = env_logger::try_init() {
-        if !e.to_string().contains("initialized") {
-            eprintln!("Failed to initialize logger: {}", e);
-        }
-    }
+) -> std::io::Result<MountHandle> {
+    use std::io::{Error, ErrorKind};
+
+    // This library function does not install a logger. The scorpio/antares
+    // binaries call `util::logging::init` once at startup, which installs the
+    // tracing subscriber and the `log` -> `tracing` bridge; a library consumer
+    // that wants `log::` records captured must initialize tracing itself.
     //let logfs = LoggingFileSystem::new(fs);
 
     let mount_path: OsString = OsString::from(mountpoint);
     let path = std::path::Path::new(&mount_path);
     if !path.exists() {
-        if let Err(e) = std::fs::create_dir_all(path) {
-            panic!("failed to create mountpoint: {}", e);
-        }
+        std::fs::create_dir_all(path).map_err(|e| {
+            Error::new(
+                e.kind(),
+                format!("failed to create mountpoint {}: {e}", path.display()),
+            )
+        })?;
     }
     if !path.exists() {
-        panic!("mountpoint does not exist");
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            format!("mountpoint does not exist: {}", path.display()),
+        ));
     }
     if !path.is_dir() {
-        panic!("mountpoint is not a directory");
+        return Err(Error::new(
+            ErrorKind::NotADirectory,
+            format!("mountpoint is not a directory: {}", path.display()),
+        ));
     }
     let has_entries = std::fs::read_dir(path)
         .map(|mut it| it.next().is_some())
         .unwrap_or(true);
     if has_entries {
-        panic!("mountpoint is not empty or is inaccessible");
+        return Err(Error::other(format!(
+            "mountpoint is not empty or is inaccessible: {}",
+            path.display()
+        )));
     }
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };
@@ -121,18 +134,15 @@ pub async fn mount_filesystem_with_antares_cache<
         apply_antares_cache_mount_options(&mut mount_options);
     }
 
-    eprintln!(
-        "[DEBUG] About to mount FUSE filesystem at: {:?}",
-        mount_path
-    );
+    tracing::debug!("about to mount FUSE filesystem at: {:?}", mount_path);
     let session = Session::<F>::new(mount_options);
-    match session.mount(fs, mount_path).await {
-        Ok(handle) => handle,
-        Err(e) => {
-            eprintln!("[ERROR] FUSE mount failed: {:?}", e);
-            eprintln!("[ERROR] Mount path: {:?}", mountpoint);
-            eprintln!("[ERROR] OS error code: {:?}", e.raw_os_error());
-            panic!("FUSE mount failed: {}", e);
-        }
-    }
+    session.mount(fs, mount_path).await.map_err(|e| {
+        tracing::error!(
+            "FUSE mount failed at {:?}: {:?} (os error code: {:?})",
+            mountpoint,
+            e,
+            e.raw_os_error()
+        );
+        e
+    })
 }
