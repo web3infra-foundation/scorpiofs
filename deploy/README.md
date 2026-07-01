@@ -74,12 +74,35 @@ Unit files live in [`systemd/`](./systemd/). Typical install:
 sudo useradd --system --no-create-home --user-group scorpiofs
 sudo usermod -aG fuse scorpiofs
 sudo install -D -m0644 deploy/systemd/scorpiofs.service /etc/systemd/system/scorpiofs.service
-sudo install -d /etc/scorpiofs && sudo cp scorpio.toml.example /etc/scorpiofs/scorpio.toml
-# edit /etc/scorpiofs/scorpio.toml (base_url/lfs_url)
+
+# Install a config whose paths match the unit's /var/lib/scorpiofs tree. Do NOT
+# just copy scorpio.toml.example — its /tmp paths and relative config_file are
+# for local dev, and the service (User=scorpiofs, no WorkingDirectory) would
+# write state relative to `/`, failing with permission denied.
+sudo install -d /etc/scorpiofs
+sudo tee /etc/scorpiofs/scorpio.toml >/dev/null <<'EOF'
+base_url = "http://your-mega:8000"
+lfs_url = "http://your-mega:8000/lfs"
+workspace = "/var/lib/scorpiofs/mount"
+store_path = "/var/lib/scorpiofs/store"
+config_file = "/var/lib/scorpiofs/config.toml"
+git_author = "MEGA"
+git_email = "admin@mega.org"
+log_level = "info"
+antares_upper_root = "/var/lib/scorpiofs/antares/upper"
+antares_cl_root = "/var/lib/scorpiofs/antares/cl"
+antares_mount_root = "/var/lib/scorpiofs/antares/mnt"
+antares_state_file = "/var/lib/scorpiofs/antares/state.toml"
+EOF
+sudo "${EDITOR:-vi}" /etc/scorpiofs/scorpio.toml   # set base_url / lfs_url
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now scorpiofs
 systemctl status scorpiofs
 ```
+
+(`install.sh` already generates a `/var/lib/scorpiofs`-based config for you, so
+if you used it you can skip the config step above and just edit `base_url`/`lfs_url`.)
 
 The unit uses `Type=simple` with `/health` as the external readiness probe
 (`Type=notify` is intentionally **not** used — the daemon does not implement

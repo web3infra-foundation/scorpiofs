@@ -24,9 +24,15 @@ AmbientCapabilities=CAP_SYS_ADMIN
 # Ensure runtime directories exist (FHS-friendly paths). Adjust to match
 # scorpio.toml / the SCORPIO_* environment. The leading '+' runs this step as
 # root (regardless of User= above) so it can create and chown the directories.
+# The parent data dirs are listed FIRST so `install -d` chowns them too (it does
+# not chown intermediate components it auto-creates) — otherwise the daemon,
+# running as scorpiofs, can't create config.toml/state.toml under a root-owned
+# /var/lib/scorpiofs.
 ExecStartPre=+/usr/bin/install -d -o scorpiofs -g scorpiofs \
+    /var/lib/scorpiofs \
     /var/lib/scorpiofs/mount \
     /var/lib/scorpiofs/store \
+    /var/lib/scorpiofs/antares \
     /var/lib/scorpiofs/antares/upper \
     /var/lib/scorpiofs/antares/cl \
     /var/lib/scorpiofs/antares/mnt
