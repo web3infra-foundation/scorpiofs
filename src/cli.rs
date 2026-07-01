@@ -263,8 +263,10 @@ pub async fn antares_serve(addr: SocketAddr) -> i32 {
 
 /// Mount via a running HTTP daemon (recommended for build systems). `endpoint`
 /// is the base URL; the request is sent to `{endpoint}/mounts`.
-pub fn http_mount(job_id: Option<&str>, path: &str, cl: Option<&str>, endpoint: &str) -> i32 {
-    let client = reqwest::blocking::Client::new();
+pub async fn http_mount(job_id: Option<&str>, path: &str, cl: Option<&str>, endpoint: &str) -> i32 {
+    // Use the async reqwest client: this runs inside the binaries' tokio
+    // runtime, where reqwest::blocking would panic.
+    let client = reqwest::Client::new();
     let url = format!("{}/mounts", endpoint.trim_end_matches('/'));
     let payload = serde_json::json!({
         "job_id": job_id,
@@ -277,8 +279,9 @@ pub fn http_mount(job_id: Option<&str>, path: &str, cl: Option<&str>, endpoint: 
         .header("content-type", "application/json")
         .json(&payload)
         .send()
+        .await
     {
-        Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>() {
+        Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>().await {
             Ok(v) => {
                 println!(
                     "{}",
@@ -293,7 +296,7 @@ pub fn http_mount(job_id: Option<&str>, path: &str, cl: Option<&str>, endpoint: 
         },
         Ok(r) => {
             let status = r.status();
-            let body = r.text().unwrap_or_default();
+            let body = r.text().await.unwrap_or_default();
             eprintln!("http mount failed: status={status} body={body}");
             exit::MOUNT
         }

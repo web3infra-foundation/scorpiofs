@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::Write,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -14,16 +15,33 @@ pub mod store;
 ///
 /// Writes to a sibling temp file and renames it into place so that a crash or
 /// I/O error mid-write cannot leave a half-written (corrupt) state file. The
-/// temp file is removed on failure.
+/// temp file is created with `O_EXCL` (`create_new`) so it can neither follow a
+/// pre-planted symlink nor truncate an existing file, and it is removed on
+/// failure.
 fn write_atomic(file_path: &str, content: &[u8]) -> std::io::Result<()> {
     static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let tmp_path = format!("{file_path}.tmp.{}.{n}", std::process::id());
 
-    if let Err(e) = fs::write(&tmp_path, content) {
+    // Exclusive create: fails if the path already exists and won't traverse a
+    // symlink for the final component.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+
+    if let Err(e) = file.write_all(content) {
+        drop(file);
         let _ = fs::remove_file(&tmp_path);
         return Err(e);
     }
+    if let Err(e) = file.sync_all() {
+        drop(file);
+        let _ = fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    drop(file);
+
     if let Err(e) = fs::rename(&tmp_path, file_path) {
         let _ = fs::remove_file(&tmp_path);
         return Err(e);
